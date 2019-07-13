@@ -1,0 +1,18 @@
+spring:
+  elasticsearch:
+    jest:
+      uris: http://localhost:9200
+#      read-timeout: 10000
+#      username: user
+#      password: secret
+elastic-index-config:
+  INDEX: ocr
+  TYPE: doc
+  INIT: initial
+ocr-file:
+  OCRPATH: "E:\\workfiles\\WEB\\springboot\\elasticsearch-ocr\\src\\main\\resources\\static\\ocrs"
+server:
+  port: 8080
+#  jetty:
+#    max-http-post-size:
+#    acceptors: 1
