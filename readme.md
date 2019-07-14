@@ -47,109 +47,27 @@ server:
   port: 8080
 ```
 
-## 记录
-
-### ik中文分词
-
-```
-PUT /ocr?pretty
-{
-    "settings": {
-        "analysis": {
-            "analyzer": {
-                "ik": {
-                    "tokenizer": "ik_smart"
-                }
-            }
-        }
-    },
-    "mappings": {
-        "doc": {
-            "dynamic": true,
-            "properties": {
-                "textResult.text": {
-                    "type": "text",
-                    "analyzer": "ik_smart",
-                    "search_analyzer": "ik_smart"
-                },
-                "ocrText": {
-                  "type": "text",
-                  "analyzer": "ik_smart",
-                  "search_analyzer": "ik_smart"
-                }
-            }
-        }
-    }
-}
-```
-
-### 搜索
+其中ocr文件夹结构为
 
 ```$xslt
-模糊搜索
-GET ocr/doc/_search
-{
-  "query": {
-    "bool": {
-      "should": [
-        {
-          "match": {
-            "ocrText": "${queryString}"
-          }
-        },
-        {
-          "nested": {
-            "path": "textResult",
-            "query": {
-              "match": {
-                "textResult.text": "${queryString}"
-              }
-            }
-          }
-        }
-      ]
-    }
-  },
-  "_source": ["ocrText","pdfUrl","id"], 
-  "highlight": {
-    "fields": {
-      "textResult.text": {},
-      "ocrText": {}
-    }
-  }
-}
-
-详细信息
-GET ocr/doc/_search
-{
-  "query": {
-    "bool": {
-      "must": [
-        {
-          "match": {
-            "id": "${id}"
-          }
-        },
-        {
-          "nested": {
-            "path": "textResult",
-            "query": {
-              "match": {
-                "textResult.text": "${wd}"
-              }
-            },
-            "inner_hits":{
-              "_source":["textResult"]
-            }
-          }
-        }
-      ]
-    }
-  },
-  "highlight": {
-    "fields": {
-      "textResult.text": {}
-    }
-  }
-}
+- ocr
+-- 文件id
+--- 文件id.json
+--- 文件id.jpg
 ```
+
+### 读取文件
+
+访问`localhost:8080/reader/1234`读取指定目录下的文件，等待执行结果
+
+读取文件完成后，修改`application.yml`配置文件的`INIT`为`default`，否则每次启动都会初始化
+
+### 操作
+
+首页：`localhost:8080/`
+
+搜索：`localhost:8080/s?wd=关键词&pn=页数(>=1)`
+
+详情页面：`localhost:8080/detail?wd=关键词``
+
+![预览](https://i.loli.net/2019/07/14/5d2a95418c84a43268.gif)
