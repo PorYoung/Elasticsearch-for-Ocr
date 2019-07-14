@@ -23,7 +23,8 @@ public class Ocr {
     private String pdfUrl;
     private List<TextResult> textResult;
 
-    private String highlightResult;
+    private List<String> hlOcrText;
+    private List<String> hlTextResult;
 
     public Ocr(String id) {
         this.id = id;

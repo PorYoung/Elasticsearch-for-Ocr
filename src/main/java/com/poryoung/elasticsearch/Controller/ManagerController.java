@@ -48,7 +48,8 @@ public class ManagerController {
                                @RequestParam(value = "ig", required = false, defaultValue = "0") int ig,
                                Model model) throws IOException {
         if (!pass.equals("1234")) {
-            return "pass error!";
+//            return "pass error!";
+            return "404";
         }
         if (OCRPATH == null) {
             log.error("读取OCR文件路径失败");

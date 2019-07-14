@@ -1,7 +1,11 @@
 package com.poryoung.elasticsearch.repository.impl;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.poryoung.elasticsearch.Bean.Ocr;
 import com.poryoung.elasticsearch.Bean.Page;
+import com.poryoung.elasticsearch.Bean.TextResult;
 import com.poryoung.elasticsearch.repository.IOcrRepository;
 import io.searchbox.client.JestClient;
 import io.searchbox.client.JestResult;
@@ -11,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +24,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Repository;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -59,7 +65,7 @@ public class OcrESRepository implements IOcrRepository {
     }
 
     @Override
-    public Page<Ocr> query(String queryString, int pageNo, int size) {
+    public Page<Ocr> multQuery(String queryString, int pageNo, int size) {
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         HighlightBuilder highlightBuilder = new HighlightBuilder().field("*").requireFieldMatch(false).tagsSchema("default");
         searchSourceBuilder.highlighter(highlightBuilder);
@@ -115,6 +121,165 @@ public class OcrESRepository implements IOcrRepository {
             log.warn("index:{}, type:{}, search again!! error = {}", indexName, typeName, e.getMessage());
             sleep(100);
             return jsonSearch(json, indexName, typeName);
+        }
+    }
+
+    @Override
+    public Page<Ocr> query(String queryString, int pageNo, int size) {
+        String queryJson = "{\n" +
+                "  \"query\": {\n" +
+                "    \"bool\": {\n" +
+                "      \"should\": [\n" +
+                "        {\n" +
+                "          \"match\": {\n" +
+                "            \"ocrText\": \"${queryString}\"\n" +
+                "          }\n" +
+                "        },\n" +
+                "        {\n" +
+                "          \"nested\": {\n" +
+                "            \"path\": \"textResult\",\n" +
+                "            \"query\": {\n" +
+                "              \"match\": {\n" +
+                "                \"textResult.text\": \"${queryString}\"\n" +
+                "              }\n" +
+                "            }\n" +
+                "          }\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    }\n" +
+                "  },\n" +
+                "  \"_source\": [\"ocrText\",\"pdfUrl\",\"id\"], \n" +
+                "  \"highlight\": {\n" +
+                "    \"fields\": {\n" +
+                "      \"textResult.text\": {},\n" +
+                "      \"ocrText\": {}\n" +
+                "    }\n" +
+                "  }\n" +
+                "}";
+        queryJson = queryJson.replace("${queryString}", queryString);
+        log.info("QueryString: {}" + queryJson);
+        Search search = new Search.Builder(queryJson).addIndex(INDEX).addType(TYPE).build();
+        SearchResult searchResult = null;
+        try {
+            searchResult = jestClient.execute(search);
+
+            if (searchResult.isSucceeded()) {
+                List<SearchResult.Hit<Ocr, Void>> hits = searchResult.getHits(Ocr.class);
+                List<Ocr> ocrs = hits.stream().map(hit -> {
+                    Ocr ocr = hit.source;
+                    Map<String, List<String>> highlight = hit.highlight;
+                    if (highlight.containsKey("ocrText")) {
+                        Object arr[] = highlight.get("ocrText").toArray();
+                        List<String> ocrTexts = new ArrayList<>();
+                        for (Object o : arr) {
+                            ocrTexts.add((String) o);
+                        }
+                        ocr.setHlOcrText(ocrTexts);
+                    }
+                    if (highlight.containsKey("textResult.text")) {
+                        Object arr[] = highlight.get("textResult.text").toArray();
+                        List<String> textResults = new ArrayList<>();
+                        for (Object o : arr) {
+                            textResults.add((String) o);
+                        }
+                        ocr.setHlTextResult(textResults);
+                    }
+                    return ocr;
+                }).collect(toList());
+                int took = searchResult.getJsonObject().get("took").getAsInt();
+                Page<Ocr> page = Page.<Ocr>builder().list(ocrs).pageNo(pageNo).size(size).total(searchResult.getTotal()).took(took).build();
+                return page;
+            } else {
+                log.warn("查询失败：index:{}, type:{}, error = {}", INDEX, TYPE, searchResult.getResponseCode());
+            }
+        } catch (Exception e) {
+            log.error("执行查询失败，抛出异常：index:{}, type:{}", INDEX, TYPE);
+            return null;
+        }
+
+        return null;
+    }
+
+    @Override
+    public Ocr queryDetail(String id, String queryString) {
+        String queryJson = "{\n" +
+                "  \"query\": {\n" +
+                "    \"bool\": {\n" +
+                "      \"must\": [\n" +
+                "        {\n" +
+                "          \"match\": {\n" +
+                "            \"id\": \"${id}\"\n" +
+                "          }\n" +
+                "        },\n" +
+                "        {\n" +
+                "          \"nested\": {\n" +
+                "            \"path\": \"textResult\",\n" +
+                "            \"query\": {\n" +
+                "              \"match\": {\n" +
+                "                \"textResult.text\": \"${queryString}\"\n" +
+                "              }\n" +
+                "            },\n" +
+                "            \"inner_hits\":{\n" +
+                "              \"_source\":[\"textResult\"]\n" +
+                "            }\n" +
+                "          }\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    }\n" +
+                "  },\n" +
+                "  \"highlight\": {\n" +
+                "    \"fields\": {\n" +
+                "      \"textResult.text\": {}\n" +
+                "    }\n" +
+                "  }\n" +
+                "}";
+        queryJson = queryJson.replace("${queryString}", queryString);
+        queryJson = queryJson.replace("${id}", id);
+        log.info("QueryString: {}" + queryJson);
+        Search search = new Search.Builder(queryJson).addIndex(INDEX).addType(TYPE).build();
+        SearchResult searchResult = null;
+        try {
+            searchResult = jestClient.execute(search);
+            if (searchResult.isSucceeded()) {
+                List<SearchResult.Hit<Ocr, Void>> hits = searchResult.getHits(Ocr.class);
+                List<Ocr> ocrs = hits.stream().map(hit -> {
+                    Ocr ocr = hit.source;
+                    Map<String, List<String>> highlight = hit.highlight;
+                    if (highlight.containsKey("textResult.text")) {
+                        Object arr[] = highlight.get("textResult.text").toArray();
+                        List<String> textResults = new ArrayList<>();
+                        for (Object o : arr) {
+                            textResults.add((String) o);
+                        }
+                        ocr.setHlTextResult(textResults);
+                    }
+                    return ocr;
+                }).collect(toList());
+                JsonObject innerHits = searchResult.getJsonObject().get("hits").getAsJsonObject().get("hits").getAsJsonArray().get(0).getAsJsonObject().get("inner_hits").getAsJsonObject();
+                JsonArray innerHitsResultArray = innerHits.get("textResult").getAsJsonObject().get("hits").getAsJsonObject().get("hits").getAsJsonArray();
+                List<TextResult> textResults = new ArrayList<>();
+                for (JsonElement result : innerHitsResultArray) {
+                    JsonObject source = result.getAsJsonObject().get("_source").getAsJsonObject();
+                    TextResult textResult = new TextResult();
+                    textResult.setCharNum(source.get("charNum").getAsInt());
+                    textResult.setHandwritten(source.get("isHandwritten").getAsBoolean());
+                    textResult.setLeftBottom(source.get("leftBottom").getAsString());
+                    textResult.setLeftTop(source.get("leftTop").getAsString());
+                    textResult.setRightBottom(source.get("rightBottom").getAsString());
+                    textResult.setRightTop(source.get("rightTop").getAsString());
+                    textResult.setText(source.get("text").getAsString());
+                    textResults.add(textResult);
+                }
+                Ocr ocr = ocrs.get(0);
+                ocr.setTextResult(textResults);
+                return ocr;
+            } else {
+                log.error("执行查询失败，抛出异常：index:{}, type:{}", INDEX, TYPE);
+                return null;
+            }
+        } catch (Exception e) {
+            log.error("执行查询失败，抛出异常：index:{}, type:{}", INDEX, TYPE);
+            return null;
         }
     }
 
