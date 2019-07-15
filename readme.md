@@ -1,5 +1,7 @@
 # Readme
 
+[趟坑记录](https://blog.poryoung.cn/?p=1052)
+
 ## 启动
 
 - elasticsearch `6.2.2`
