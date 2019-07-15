@@ -67,7 +67,7 @@ public class IndexESRepository implements IIndexRepository {
     /**
      * 设置index的mapping（设置数据类型和分词方式）
      */
-    public JestResult createIndexMapping(String index,String settinsJson, String mappingsJson) {
+    public JestResult createIndexMapping(String index, String settinsJson, String mappingsJson) {
         JestResult jestResult = null;
         try {
             CreateIndex createIndex = new CreateIndex.Builder(index)
